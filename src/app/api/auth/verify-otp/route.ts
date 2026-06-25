@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyOtp } from '@/lib/otpStore';
 
-const IRAN_MOBILE_REGEX = /^09[0-9]{9}$/;
+const FULL_MOBILE_REGEX = /^\+[1-9]\d{1,14}$/;
 const OTP_REGEX = /^[0-9]{6}$/;
 
 export async function POST(req: NextRequest) {
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     const mobile: string = (body.mobile ?? '').trim();
     const otp: string = (body.otp ?? '').trim();
 
-    if (!IRAN_MOBILE_REGEX.test(mobile)) {
+    if (!FULL_MOBILE_REGEX.test(mobile)) {
       return NextResponse.json(
         { success: false, message: 'شماره موبایل نامعتبر است.' },
         { status: 400 }

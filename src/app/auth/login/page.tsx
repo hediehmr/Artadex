@@ -28,8 +28,8 @@ const COUNTRIES: Country[] = [
     flag: '🇮🇷',
     nameEn: 'Iran',
     nameFa: 'ایران',
-    maxLen: 10,
-    placeholder: '9123456789',
+    maxLen: 11,   // accepts 09XXXXXXXXX (11) — leading 0 auto-stripped → 10 digits sent
+    placeholder: '09123456789',
   },
   {
     dialCode: '+1',
@@ -195,8 +195,12 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
 
-    const digits = localNumber.replace(/\D/g, '');
-    if (digits.length < country.maxLen) {
+    let digits = localNumber.replace(/\D/g, '');
+    // Auto-strip leading 0 (user typed 09... but +98 is already shown)
+    if (digits.startsWith('0')) digits = digits.slice(1);
+    // Iran needs exactly 10 local digits; Canada/US also 10
+    const required = 10;
+    if (digits.length < required) {
       setError(t.errInvalidMobile);
       return;
     }
@@ -295,7 +299,10 @@ export default function LoginPage() {
                     value={localNumber}
                     onChange={(e) => {
                       setError('');
-                      setLocalNumber(e.target.value.replace(/\D/g, '').slice(0, country.maxLen));
+                      let raw = e.target.value.replace(/\D/g, '');
+                      // Auto-strip leading 0: user types 09... but +98 is already shown
+                      if (raw.startsWith('0')) raw = raw.slice(1);
+                      setLocalNumber(raw.slice(0, country.maxLen));
                     }}
                     disabled={loading}
                     dir="ltr"
@@ -322,6 +329,13 @@ export default function LoginPage() {
                   </div>
                 )}
 
+                {/* Formatted number preview */}
+                {localNumber.length > 0 && !error && (
+                  <p className="mt-1.5 text-[11px] text-[#475569] font-mono" dir="ltr">
+                    {country.dialCode} {localNumber}
+                  </p>
+                )}
+
                 {error && (
                   <p id="mobile-error" role="alert" className="mt-2 text-xs text-[#EF4444]">
                     {error}
@@ -333,7 +347,7 @@ export default function LoginPage() {
               <button
                 id="send-otp-btn"
                 type="submit"
-                disabled={loading || localNumber.replace(/\D/g, '').length < country.maxLen}
+                disabled={loading || (() => { const d = localNumber.replace(/\D/g, ''); return (d.startsWith('0') ? d.slice(1) : d).length < 10; })()}
                 className="w-full btn-primary h-[52px] text-base disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none mt-1"
               >
                 {loading ? (
