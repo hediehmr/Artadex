@@ -3,14 +3,19 @@
 import { useState, useEffect, FormEvent, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Zap, KeyRound, Loader2, CheckCircle2, RefreshCw } from 'lucide-react';
+import {
+  Zap, KeyRound, Loader2, CheckCircle2, RefreshCw, Languages,
+} from 'lucide-react';
+import { i18n, type Lang } from '@/lib/authI18n';
 
 const OTP_LENGTH = 6;
-const RESEND_COOLDOWN = 60; // seconds
+const RESEND_COOLDOWN = 60;
 
 export default function VerifyPage() {
   const router = useRouter();
+  const [lang, setLang] = useState<Lang>('fa');
   const [mobile, setMobile] = useState('');
+  const [displayMobile, setDisplayMobile] = useState('');
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -18,71 +23,78 @@ export default function VerifyPage() {
   const [countdown, setCountdown] = useState(RESEND_COOLDOWN);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Retrieve mobile from sessionStorage set by login page
+  // Restore session data
   useEffect(() => {
-    const stored = sessionStorage.getItem('auth_mobile');
-    if (!stored) {
+    const storedMobile = sessionStorage.getItem('auth_mobile');
+    const storedLang = sessionStorage.getItem('auth_lang') as Lang | null;
+    const storedDisplay = sessionStorage.getItem('auth_display');
+
+    if (!storedMobile) {
       router.replace('/auth/login');
       return;
     }
-    setMobile(stored);
+    setMobile(storedMobile);
+    if (storedLang) setLang(storedLang);
+    if (storedDisplay) setDisplayMobile(storedDisplay);
   }, [router]);
 
-  // Countdown timer for resend
+  // Countdown
   useEffect(() => {
     if (countdown <= 0) return;
     const timer = setInterval(() => setCountdown((c) => c - 1), 1000);
     return () => clearInterval(timer);
   }, [countdown]);
 
-  // Focus first box on mount
+  // Focus first cell
   useEffect(() => {
     inputRefs.current[0]?.focus();
   }, []);
 
+  const t = i18n[lang];
   const otpValue = otp.join('');
 
   const handleOtpChange = (index: number, value: string) => {
     setError('');
     const digit = value.replace(/\D/g, '').slice(-1);
-    const newOtp = [...otp];
-    newOtp[index] = digit;
-    setOtp(newOtp);
-    // Auto-advance
-    if (digit && index < OTP_LENGTH - 1) {
-      inputRefs.current[index + 1]?.focus();
-    }
+    const next = [...otp];
+    next[index] = digit;
+    setOtp(next);
+    if (digit && index < OTP_LENGTH - 1) inputRefs.current[index + 1]?.focus();
   };
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Backspace') {
       if (otp[index]) {
-        // Clear current cell
-        const newOtp = [...otp];
-        newOtp[index] = '';
-        setOtp(newOtp);
+        const next = [...otp];
+        next[index] = '';
+        setOtp(next);
       } else if (index > 0) {
-        // Move back
         inputRefs.current[index - 1]?.focus();
       }
     }
-    if (e.key === 'ArrowLeft' && index > 0) inputRefs.current[index - 1]?.focus();
-    if (e.key === 'ArrowRight' && index < OTP_LENGTH - 1) inputRefs.current[index + 1]?.focus();
+    if (e.key === 'ArrowLeft') {
+      const target = lang === 'fa' ? index + 1 : index - 1;
+      if (target >= 0 && target < OTP_LENGTH) inputRefs.current[target]?.focus();
+    }
+    if (e.key === 'ArrowRight') {
+      const target = lang === 'fa' ? index - 1 : index + 1;
+      if (target >= 0 && target < OTP_LENGTH) inputRefs.current[target]?.focus();
+    }
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH);
-    const newOtp = Array(OTP_LENGTH).fill('');
-    pasted.split('').forEach((char, i) => { newOtp[i] = char; });
-    setOtp(newOtp);
+    const next = Array(OTP_LENGTH).fill('');
+    pasted.split('').forEach((ch, i) => { next[i] = ch; });
+    setOtp(next);
     inputRefs.current[Math.min(pasted.length, OTP_LENGTH - 1)]?.focus();
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (otpValue.length !== OTP_LENGTH) {
-      setError('لطفاً کد ۶ رقمی را کامل وارد کنید.');
+      setError(t.errIncomplete);
       return;
     }
     setError('');
@@ -96,7 +108,7 @@ export default function VerifyPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setError(data.message ?? 'کد اشتباه است.');
+        setError(data.message ?? t.errWrongOtp);
         setOtp(Array(OTP_LENGTH).fill(''));
         inputRefs.current[0]?.focus();
         return;
@@ -104,10 +116,11 @@ export default function VerifyPage() {
 
       setSuccess(true);
       sessionStorage.removeItem('auth_mobile');
-      // Short success animation before redirect
+      sessionStorage.removeItem('auth_lang');
+      sessionStorage.removeItem('auth_display');
       setTimeout(() => router.push('/dashboard'), 1200);
     } catch {
-      setError('خطای شبکه. لطفاً دوباره تلاش کنید.');
+      setError(t.errNetworkVerify);
     } finally {
       setLoading(false);
     }
@@ -118,19 +131,26 @@ export default function VerifyPage() {
     setOtp(Array(OTP_LENGTH).fill(''));
     setError('');
     setCountdown(RESEND_COOLDOWN);
-    await fetch('/api/auth/send-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mobile }),
-    });
+    // Extract dial code and local number from stored full mobile
+    const match = mobile.match(/^(\+\d+)(\d+)$/);
+    if (match) {
+      await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dialCode: match[1], localNumber: match[2] }),
+      });
+    }
     inputRefs.current[0]?.focus();
   };
 
+  // OTP cells: always LTR (digits), but rendered RTL or LTR
+  const cells = lang === 'fa' ? [...Array(OTP_LENGTH).keys()].reverse() : [...Array(OTP_LENGTH).keys()];
+
   return (
-    <div className="min-h-screen bg-[#0F172A] flex flex-col">
+    <div className="min-h-screen bg-[#0F172A] flex flex-col" dir={t.dir}>
       {/* ── Navbar ─────────────────────────────────────────────────────────── */}
-      <header className="border-b border-white/8">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center">
+      <header className="border-b border-white/8 flex-shrink-0">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
             <div className="relative flex items-center justify-center w-8 h-8">
               <div className="absolute w-8 h-8 bg-[#10B981] rounded-lg opacity-20 animate-pulse" />
@@ -140,78 +160,105 @@ export default function VerifyPage() {
               Artadex
             </span>
           </Link>
+
+          {/* Language toggle */}
+          <button
+            id="lang-toggle-btn"
+            onClick={() => setLang(l => l === 'fa' ? 'en' : 'fa')}
+            aria-label="Toggle language"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/8 border border-white/12 text-[#94A3B8] hover:text-white hover:border-white/20 transition-all duration-150 text-xs font-semibold"
+          >
+            <Languages className="w-3.5 h-3.5" />
+            {lang === 'fa' ? 'EN' : 'فا'}
+          </button>
         </div>
       </header>
 
       {/* ── Form area ──────────────────────────────────────────────────────── */}
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-[#10B981]/8 rounded-full blur-3xl pointer-events-none" />
+      <main className="flex-1 flex items-center justify-center px-4 py-12 relative">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-[#10B981]/6 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-1/3 right-1/4 w-64 h-64 bg-[#3B82F6]/4 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative w-full max-w-sm animate-fade-in">
-          <div className="bg-white/5 border border-white/10 rounded-3xl p-8 shadow-[0_24px_80px_rgba(0,0,0,0.5)] backdrop-blur-sm">
+          <div className="bg-white/5 border border-white/10 rounded-3xl p-8 shadow-[0_32px_80px_rgba(0,0,0,0.6)] backdrop-blur-md">
 
-            {/* Success state */}
+            {/* ── Success State ────────────────────────────────────── */}
             {success ? (
               <div className="flex flex-col items-center py-8 animate-fade-in">
-                <div className="w-16 h-16 rounded-2xl bg-[#10B981]/20 flex items-center justify-center mb-4">
-                  <CheckCircle2 className="w-8 h-8 text-[#10B981]" />
+                <div className="w-20 h-20 rounded-3xl bg-[#10B981]/20 border border-[#10B981]/30 flex items-center justify-center mb-5 shadow-jade-glow">
+                  <CheckCircle2 className="w-10 h-10 text-[#10B981]" strokeWidth={1.75} />
                 </div>
-                <h2 className="text-xl font-bold text-white mb-1">ورود موفق!</h2>
-                <p className="text-[#94A3B8] text-sm">در حال انتقال به داشبورد...</p>
+                <h2 className="text-2xl font-extrabold text-white mb-2">{t.successTitle}</h2>
+                <p className="text-[#64748B] text-sm">{t.successSub}</p>
+                {/* Loading dots */}
+                <div className="flex gap-1.5 mt-5">
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="w-2 h-2 rounded-full bg-[#10B981] animate-bounce"
+                      style={{ animationDelay: `${i * 0.15}s` }}
+                    />
+                  ))}
+                </div>
               </div>
             ) : (
               <>
-                {/* Icon */}
-                <div className="w-14 h-14 rounded-2xl bg-[#10B981]/15 border border-[#10B981]/20 flex items-center justify-center mx-auto mb-6">
-                  <KeyRound className="w-6 h-6 text-[#10B981]" strokeWidth={2} />
+                {/* Icon badge */}
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#10B981]/20 to-[#059669]/10 border border-[#10B981]/20 flex items-center justify-center mx-auto mb-6 shadow-jade-glow">
+                  <KeyRound className="w-7 h-7 text-[#10B981]" strokeWidth={1.75} />
                 </div>
 
-                <h1 className="text-2xl font-extrabold text-white text-center mb-1">
-                  تأیید شماره موبایل
+                <h1 className="text-2xl font-extrabold text-white text-center mb-1.5 tracking-tight">
+                  {t.verifyTitle}
                 </h1>
-                <p className="text-[#94A3B8] text-sm text-center mb-2">
-                  کد ۶ رقمی ارسال شده به
+                <p className="text-[#64748B] text-sm text-center mb-1">
+                  {t.verifySubtitle}
                 </p>
-                <p className="text-[#10B981] text-sm font-mono font-semibold text-center tracking-widest mb-8">
-                  {mobile}
+                <p className="text-[#10B981] text-sm font-mono font-semibold text-center tracking-widest mb-8 break-all">
+                  {displayMobile || mobile}
                 </p>
 
                 <form onSubmit={handleSubmit} noValidate>
-                  {/* OTP grid */}
+                  {/* OTP cells — always LTR regardless of page dir */}
                   <div
                     className="flex gap-2 justify-center mb-4"
                     dir="ltr"
                     onPaste={handlePaste}
                   >
-                    {otp.map((digit, i) => (
-                      <input
-                        key={i}
-                        id={`otp-digit-${i}`}
-                        ref={(el) => { inputRefs.current[i] = el; }}
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={1}
-                        value={digit}
-                        onChange={(e) => handleOtpChange(i, e.target.value)}
-                        onKeyDown={(e) => handleKeyDown(i, e)}
-                        disabled={loading}
-                        aria-label={`رقم ${i + 1} از کد تأیید`}
-                        className={[
-                          'w-11 h-14 text-center text-xl font-bold font-mono rounded-xl border transition-all duration-150',
-                          'bg-white/8 text-white placeholder-[#475569]',
-                          'focus:outline-none focus:ring-2 focus:ring-[#10B981]/30',
-                          digit
-                            ? 'border-[#10B981] bg-[#10B981]/10 shadow-jade-glow'
-                            : 'border-white/12',
-                          'disabled:opacity-50',
-                        ].join(' ')}
-                      />
+                    {Array.from({ length: OTP_LENGTH }, (_, i) => (
+                      <div key={i} className="relative">
+                        <input
+                          id={`otp-digit-${i}`}
+                          ref={(el) => { inputRefs.current[i] = el; }}
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={1}
+                          value={otp[i]}
+                          onChange={(e) => handleOtpChange(i, e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(i, e)}
+                          disabled={loading}
+                          aria-label={t.digitLabel(i)}
+                          className={[
+                            'w-11 h-14 text-center text-xl font-bold font-mono rounded-xl border',
+                            'transition-all duration-150 bg-white/8 text-white',
+                            'focus:outline-none focus:ring-2 focus:ring-[#10B981]/30',
+                            otp[i]
+                              ? 'border-[#10B981] bg-[#10B981]/10 shadow-jade-glow scale-105'
+                              : 'border-white/12 hover:border-white/20',
+                            'disabled:opacity-50',
+                          ].join(' ')}
+                        />
+                        {/* Filled dot indicator */}
+                        {otp[i] && (
+                          <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#10B981]" />
+                        )}
+                      </div>
                     ))}
                   </div>
 
                   {/* Error */}
                   {error && (
-                    <p role="alert" className="text-xs text-[#EF4444] text-center mb-4">
+                    <p role="alert" className="text-xs text-[#EF4444] text-center mb-4 animate-fade-in">
                       {error}
                     </p>
                   )}
@@ -221,15 +268,15 @@ export default function VerifyPage() {
                     id="verify-otp-btn"
                     type="submit"
                     disabled={loading || otpValue.length !== OTP_LENGTH}
-                    className="w-full btn-primary py-3.5 text-base disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                    className="w-full btn-primary h-[52px] text-base disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
                   >
                     {loading ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        در حال تأیید...
+                        {t.verifying}
                       </>
                     ) : (
-                      'تأیید و ورود'
+                      t.verifyBtn
                     )}
                   </button>
                 </form>
@@ -240,20 +287,22 @@ export default function VerifyPage() {
                     id="resend-otp-btn"
                     onClick={handleResend}
                     disabled={countdown > 0}
-                    className="flex items-center gap-1.5 text-xs font-medium text-[#94A3B8] hover:text-[#10B981] disabled:text-[#475569] disabled:cursor-not-allowed transition-colors"
+                    className="flex items-center gap-1.5 text-xs font-medium text-[#94A3B8] hover:text-[#10B981] disabled:text-[#334155] disabled:cursor-not-allowed transition-colors"
                   >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    {countdown > 0 ? `ارسال مجدد (${countdown}s)` : 'ارسال مجدد کد'}
+                    <RefreshCw
+                      className={`w-3.5 h-3.5 ${countdown > 0 ? '' : 'text-[#10B981]'}`}
+                    />
+                    {countdown > 0 ? t.resendCooldown(countdown) : t.resend}
                   </button>
                 </div>
               </>
             )}
           </div>
 
-          {/* Back */}
-          <p className="text-center text-[#475569] text-xs mt-6">
+          {/* Back link */}
+          <p className="text-center text-[#475569] text-xs mt-5">
             <Link href="/auth/login" className="hover:text-[#94A3B8] transition-colors">
-              ← تغییر شماره موبایل
+              {t.backToLogin}
             </Link>
           </p>
         </div>
