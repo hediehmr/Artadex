@@ -1,0 +1,130 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply font-sans bg-[#F8FAFC] text-[#0F172A];
+  }
+
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-[#CBD5E1] rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-[#94A3B8];
+  }
+}
+
+@layer components {
+  /* ─── Card ─────────────────────────────────────── */
+  .card {
+    @apply bg-white rounded-2xl shadow-card border border-[#F1F5F9] transition-shadow duration-200;
+  }
+
+  .card:hover {
+    @apply shadow-card-hover;
+  }
+
+  /* ─── Badge ─────────────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
+  }
+
+  .badge-jade {
+    @apply badge bg-[#ECFDF5] text-[#059669];
+  }
+
+  .badge-red {
+    @apply badge bg-[#FEF2F2] text-[#DC2626];
+  }
+
+  .badge-yellow {
+    @apply badge bg-[#FFFBEB] text-[#D97706];
+  }
+
+  /* ─── Skeleton loader ───────────────────────────── */
+  .skeleton {
+    @apply animate-pulse bg-[#E2E8F0] rounded-lg;
+  }
+
+  /* ─── Nav item ──────────────────────────────────── */
+  .nav-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer select-none;
+  }
+
+  .nav-item-inactive {
+    @apply nav-item text-[#94A3B8] hover:text-white hover:bg-white/8;
+  }
+
+  .nav-item-active {
+    @apply nav-item text-[#0F172A] bg-[#10B981] font-semibold shadow-jade-glow;
+  }
+
+  /* ─── Icon button ───────────────────────────────── */
+  .icon-btn {
+    @apply relative flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-[#E2E8F0] text-[#64748B] hover:text-[#0F172A] hover:border-[#CBD5E1] hover:shadow-sm transition-all duration-150 cursor-pointer;
+  }
+
+  /* ─── Primary button ────────────────────────────── */
+  .btn-primary {
+    @apply flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#10B981] text-white text-sm font-semibold 
+           hover:bg-[#059669] active:scale-95 transition-all duration-150 shadow-jade-glow cursor-pointer;
+  }
+
+  /* ─── Secondary button ──────────────────────────── */
+  .btn-secondary {
+    @apply flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white text-[#0F172A] text-sm font-semibold 
+           border border-[#E2E8F0] hover:border-[#CBD5E1] hover:shadow-sm active:scale-95 transition-all duration-150 cursor-pointer;
+  }
+
+  /* ─── Danger button ─────────────────────────────── */
+  .btn-danger {
+    @apply flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#FEF2F2] text-[#EF4444] text-sm font-semibold 
+           border border-[#FEE2E2] hover:bg-[#EF4444] hover:text-white active:scale-95 transition-all duration-150 cursor-pointer;
+  }
+}
+
+@layer utilities {
+  .bg-white\/8 {
+    background-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .bg-white\/12 {
+    background-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
